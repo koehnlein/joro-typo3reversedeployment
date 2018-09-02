@@ -5,3 +5,5 @@
 /.idea/
 /fileadmin/*
 /.reverse
+/typo3reverse.phar
+/Documentation/doxygen/

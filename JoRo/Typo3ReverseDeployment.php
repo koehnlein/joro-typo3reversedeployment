@@ -93,6 +93,13 @@ Class Typo3ReverseDeployment
      * @var string $rsyncPathAndBinary
      */
     protected $rsyncPathAndBinary = "rsync";
+    
+    /**
+     * Relative path to typo3_console executable
+     *
+     * @var string $pathToConsoleExecutable
+     */
+    protected $pathToConsoleExecutable = "../vendor/bin/typo3cms";
 
     /**
      * @return string
@@ -269,6 +276,27 @@ Class Typo3ReverseDeployment
     }
 
     /**
+     * Add item to $exclude
+     * Use after 'setExclude' otherwise it will be overwritten
+     *
+     * @param array $exclude
+     */
+    public function addExclude($exclude)
+    {
+        $this->exclude = array_merge($this->getExclude(), $exclude);
+    }
+
+    /**
+     * Remove item from $exclude
+     *
+     * @param array $exclude
+     */
+    public function removeExclude($exclude)
+    {
+        $this->exclude = array_diff($this->getExclude(), $exclude);
+    }
+
+    /**
      * @return array
      */
     public function getInclude()
@@ -282,6 +310,27 @@ Class Typo3ReverseDeployment
     public function setInclude($include)
     {
         $this->include = $include;
+    }
+
+    /**
+     * Add item to $include
+     * Use after 'setInclude' otherwise it will be overwritten
+     *
+     * @param array $include
+     */
+    public function addInclude($include)
+    {
+        $this->include = array_merge($this->getInclude(), $include);
+    }
+
+    /**
+     * Remove item from $include
+     *
+     * @param array $include
+     */
+    public function removeInclude($include)
+    {
+        $this->include = array_diff($this->getInclude(), $include);
     }
 
     /**
@@ -325,6 +374,17 @@ Class Typo3ReverseDeployment
     }
 
     /**
+     * Add item to $sqlExcludeTable
+     * Use after 'setSqlExcludeTable' otherwise it will be overwritten
+     *
+     * @param array $sqlExcludeTable
+     */
+    public function addSqlExcludeTable($sqlExcludeTable)
+    {
+        $this->sqlExcludeTable = array_merge($this->getSqlExcludeTable(), $sqlExcludeTable);
+    }
+
+    /**
      * Get custom php binary path
      *
      * @return string
@@ -360,6 +420,26 @@ Class Typo3ReverseDeployment
     public function setRsyncPathAndBinary($rsyncPathAndBinary)
     {
         $this->rsyncPathAndBinary = $rsyncPathAndBinary;
+    }
+    
+    /**
+     * Get path to typo3_console executable
+     *
+     * @return string
+     */
+    public function getPathToConsoleExecutable()
+    {
+        return $this->pathToConsoleExecutable;
+    }
+    
+    /**
+     * Set path to typo3_console executable
+     *
+     * @param string $pathToConsoleExecutable
+     */
+    public function setPathToConsoleExecutable($pathToConsoleExecutable)
+    {
+        $this->pathToConsoleExecutable = $pathToConsoleExecutable;
     }
 
     /**
@@ -397,13 +477,22 @@ Class Typo3ReverseDeployment
      */
     public function getLocalConfiguration($ssh)
     {
-        $path = $this->getTypo3RootPath();
-        $remoteConf = $ssh->exec($this->getPhpPathAndBinary() . " -r 'echo file_get_contents(\"$path/typo3conf/LocalConfiguration.php\");'");
+        $remoteCommand = "cd " . $this->getTypo3RootPath() . " && " . $this->getPhpPathAndBinary()
+            . " " . $this->getPathToConsoleExecutable() . " configuration:showactive DB --json";
+        $remoteCommandResult = $ssh->exec($remoteCommand);
+        $conf = json_decode($remoteCommandResult, true);
 
-        $phpConfig = str_replace('<?php', '', $remoteConf);
-        $conf = eval($phpConfig);
-
-        return $conf['DB']['Connections'][$this->getConnectionPool()];
+        if(isset($conf['Connections'])) { // current TYPO3 versions
+            return $conf['Connections'][$this->getConnectionPool()];
+        } else { // simple fallback for TYPO3 7
+            return [
+                'driver' => 'mysqli',
+                'host' => $conf['host'],
+                'user' => $conf['username'],
+                'password' => $conf['password'],
+                'dbname' => $conf['database']
+            ];
+        }
     }
 
     /**
@@ -429,8 +518,8 @@ Class Typo3ReverseDeployment
         /**
          * Export and download database
          */
-        $sqlRemoteTarget = $this->getTypo3RootPath() . 'typo3temp/joro_typo3reversedeployment/' . date("Ymds") . "-" . $conf['dbname'] . ".sql";
-        $sqlExport = "cd " . $this->getTypo3RootPath() . " && " . $this->getPhpPathAndBinary() . " ../vendor/bin/typo3cms database:export";
+        $sqlRemoteTarget = $this->getTypo3RootPath() . 'typo3temp/joro_typo3reversedeployment/' . date("YmdHis") . "-" . $conf['dbname'] . ".sql";
+        $sqlExport = "cd " . $this->getTypo3RootPath() . " && " . $this->getPhpPathAndBinary() . " " . $this->getPathToConsoleExecutable() . " database:export";
 
         echo "\033[32mExport DB: $sqlExport\033[0m" . PHP_EOL;
         $ssh->exec($sqlExport . " $ignoredTables > $sqlRemoteTarget");
@@ -493,7 +582,7 @@ Class Typo3ReverseDeployment
              * Select only files with references (only used files)
              * query SELECT * FROM sys_file AS t1 INNER JOIN sys_file_reference AS t2 ON t1.uid = t2.uid_local WHERE t1.uid = t1.uid
              */
-            $filesUsed = $ssh->exec("php -r '
+            $filesUsed = $ssh->exec($this->getPhpPathAndBinary() . " -r '
                 \$mysqli = new \mysqli(\"" . $conf['host'] . "\", \"" . $conf['user'] . "\", \"" . $conf['password'] . "\", \"" . $conf['dbname'] . "\");
                 if (\$mysqli->connect_errno) {
                     printf(\"Connect failed on TYPO3 Remote: %s\n\", \$mysqli->connect_error);
@@ -522,6 +611,7 @@ Class Typo3ReverseDeployment
                 $i++;
             };
         }
+
         foreach ($this->getInclude() as $include) {
             $files[$i] = $include;
             $i++;
@@ -545,5 +635,16 @@ Class Typo3ReverseDeployment
         $htaccess = $tempFolder . '.htaccess';
         $ssh->exec($this->getPhpPathAndBinary() . " -r 'mkdir(\"$tempFolder\", 0777, true);'");
         $ssh->exec($this->getPhpPathAndBinary() . " -r 'file_put_contents(\"$htaccess\",\"deny from all\");'");
+    }
+
+    /**
+     * Catch undefined method calls and show hint to update to latest version.
+     *
+     * @param $name
+     * @param $args
+     */
+    public function __call($name, $args)
+    {
+        exit("\033[31mThe method '$name', which is used in your reverse deployment configuration, cannot be found in the installed version of joro/reversedeployment. Please install the latest version of joro/reversedeployment.\033[0m" . PHP_EOL);
     }
 }

@@ -1,0 +1,81 @@
+stages:
+  - codequality
+  - build
+  - deploy
+
+codeclimate:
+  stage: codequality
+  image: docker:stable
+  variables:
+    DOCKER_DRIVER: overlay2
+  allow_failure: true
+  services:
+    - docker:stable-dind
+  script:
+    - mkdir codeclimate/
+    - docker run --rm --env CODECLIMATE_CODE="$PWD" --env CODECLIMATE_DEBUG=1 --volume "$PWD":/code --volume /var/run/docker.sock:/var/run/docker.sock --volume /tmp/cc:/tmp/cc codeclimate/codeclimate analyze -f html > codeclimate/index.html
+  artifacts:
+    paths:
+    - codeclimate
+
+build_phar:
+  stage: build
+  image: ochorocho/one-for-all-generator:phar
+  script:
+    - composer install
+    - php -d phar.readonly=0 vendor/bin/phar-builder package
+  artifacts:
+    expire_in: '1 hour'
+    paths:
+      - typo3reverse.phar
+
+#push_phar:
+#  image: inetprocess/gitlab-release
+#  stage: deploy
+#  dependencies:
+#    - build_phar
+#  only:
+#    - tag
+#  script:
+#    - gitlab-release --message 'New automated release' typo3reverse.phar
+
+sphinx:
+  stage: build
+  image: ochorocho/one-for-all-generator:sphinx
+  script:
+    - sphinx-build -b html Documentation/ Documentation/sphinx
+  artifacts:
+    paths:
+    - Documentation/sphinx/
+
+doxygen:
+  stage: build
+  image: ochorocho/one-for-all-generator:doxygen
+  script:
+    - doxygen .doxygen
+  artifacts:
+    paths:
+    - Documentation/doxygen/
+
+pages:
+  stage: deploy
+  image: php:7.0-cli-alpine
+  dependencies:
+    - codeclimate
+    - doxygen
+    - sphinx
+  script:
+    - echo 'Copy bits an pieces'
+    - mkdir .public
+    - wget -O .public/index.php https://gitlab.knallimall.org/snippets/32/raw
+    - mv codeclimate .public/
+    - mv Documentation/doxygen/ .public/
+    - mv Documentation/sphinx/ .public/
+    - cd .public/ && php index.php && cd ..
+    - rm .public/index.php
+    - mv .public public/
+  artifacts:
+    paths:
+    - public/
+  only:
+  - master

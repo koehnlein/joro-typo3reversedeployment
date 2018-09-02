@@ -6,7 +6,13 @@ Features:
 * Download only referenced files to your local fileadmin
 * Download specific folders like ./uploads or download entire fileadmin
 
-Requires [TYPO3 Console](https://packagist.org/packages/helhum/typo3-console) on remote TYPO3 installation
+Requirements:
+* [TYPO3 Console](https://packagist.org/packages/helhum/typo3-console) (>=4.6) on remote TYPO3 installation
+* A SSH connection to the remote server
+* `rsync` to download files
+* Works with TYPO3 7.x/8.x
+
+
 
 Security
 --------
@@ -73,6 +79,21 @@ $reverseDeploy->getFiles($ssh);
 
 2) Run `vendor/bin/typo3reverse`
 
+Add/remove methods for files include/exclude
+--------------------------------------------
+
+Add/remove item to/from exludes array
+```php
+$reverseDeploy->addExclude(["uploads"]);
+$reverseDeploy->removeExclude(["uploads"]);
+```
+
+Add/remove item to/from includes array
+```php
+$reverseDeploy->addInclude(["uploads"]);
+$reverseDeploy->removeInclude(["uploads"]);
+```
+
 Use SSH-Key with passphrase
 ---------------------------
 
@@ -102,4 +123,14 @@ Then you can start the reverse deployment with a command like this:
 
 ```
 PASSPHRASE=mypassword vendor/bin/typo3reverse
+```
+
+### Build phar file
+
+Using [MacFJA/PharBuilder](https://github.com/MacFJA/PharBuilder) package to create PHAR file
+
+For configuration see composer.json `extra -> phar-builder`
+
+```bash
+php -d phar.readonly=0 vendor/bin/phar-builder package
 ```
