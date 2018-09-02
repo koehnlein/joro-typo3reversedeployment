@@ -27,4 +27,4 @@ before_script:
 
 script:
   - >
-    vendor/bin/phpunit Tests/Unit/JoRo --coverage-text --whitelist JoRo/*
+    vendor/bin/phpunit Tests/Unit/JoRo --coverage-text --whitelist JoRo
